@@ -5,19 +5,25 @@ services:
     environment:
       - IDF_TARGET=${IDF_TARGET:-esp32s3}
     volumes:
-      - .:/project
+      - ./sample-project:/project
     working_dir: /project
     command: >
-      bash -c "
+      bash -c '
         set -euo pipefail
-        echo '====================================================='
-        echo '  ESP-IDF Docker Compose CI Pipeline                 '
-        echo '  Target Chip: ' \$$IDF_TARGET
-        echo '====================================================='
+        echo "====================================================="
+        echo "  ESP-IDF Docker Compose CI Pipeline                 "
+        echo "  Target Chip: $$IDF_TARGET"
+        echo "====================================================="
 
-        # Configure target chip if sdkconfig does not exist
-        if [ ! -f sdkconfig ]; then
-          idf.py set-target \"\$$IDF_TARGET\"
+        # Clean build directory if generated from host environment
+        if [ -d build ] && grep -rq "/home/" build/ 2>/dev/null; then
+          echo "Detected host build artifacts in build/. Cleaning..."
+          rm -rf build
+        fi
+
+        # Configure target chip if sdkconfig does not exist or target differs
+        if [ ! -f sdkconfig ] || ! grep -q "CONFIG_IDF_TARGET.*$$IDF_TARGET" sdkconfig; then
+          idf.py set-target "$$IDF_TARGET"
         fi
 
         # Compile application
@@ -26,8 +32,8 @@ services:
         # Ensure artifacts are readable by host users
         chmod -R a+rw build/ 2>/dev/null || true
 
-        echo '====================================================='
-        echo '  Build Succeeded! Firmware Artifacts:              '
-        echo '====================================================='
+        echo "====================================================="
+        echo "  Build Succeeded! Firmware Artifacts:              "
+        echo "====================================================="
         ls -lh build/*.bin build/bootloader/*.bin build/partition_table/*.bin
-      "
+      '
