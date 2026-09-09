@@ -43,7 +43,7 @@ jobs:
 
       - name: Verify build outputs
         run: |
-          test -f build/app-firmware.bin || test -f build/*.bin
+          test -f sample-project/build/sample-project.bin || test -f sample-project/build/*.bin || test -f build/*.bin
           echo "Firmware compilation verified successfully!"
 
       - name: Upload Firmware Artifacts
@@ -52,10 +52,10 @@ jobs:
         with:
           name: esp-idf-firmware-${{ github.event.inputs.target || 'esp32s3' }}-${{ github.sha }}
           path: |
-            build/*.bin
-            build/bootloader/bootloader.bin
-            build/partition_table/partition-table.bin
-            build/flasher_args.json
+            sample-project/build/*.bin
+            sample-project/build/bootloader/bootloader.bin
+            sample-project/build/partition_table/partition-table.bin
+            sample-project/build/flasher_args.json
           if-no-files-found: error
 
       - name: Cleanup Docker Compose
