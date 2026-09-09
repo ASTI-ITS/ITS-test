@@ -1,0 +1,33 @@
+services:
+  idf-builder:
+    image: espressif/idf:v5.3
+    container_name: idf-ci-builder
+    environment:
+      - IDF_TARGET=${IDF_TARGET:-esp32s3}
+    volumes:
+      - .:/project
+    working_dir: /project
+    command: >
+      bash -c "
+        set -euo pipefail
+        echo '====================================================='
+        echo '  ESP-IDF Docker Compose CI Pipeline                 '
+        echo '  Target Chip: ' \$$IDF_TARGET
+        echo '====================================================='
+
+        # Configure target chip if sdkconfig does not exist
+        if [ ! -f sdkconfig ]; then
+          idf.py set-target \"\$$IDF_TARGET\"
+        fi
+
+        # Compile application
+        idf.py build
+
+        # Ensure artifacts are readable by host users
+        chmod -R a+rw build/ 2>/dev/null || true
+
+        echo '====================================================='
+        echo '  Build Succeeded! Firmware Artifacts:              '
+        echo '====================================================='
+        ls -lh build/*.bin build/bootloader/*.bin build/partition_table/*.bin
+      "

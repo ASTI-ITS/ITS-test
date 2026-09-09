@@ -1,0 +1,63 @@
+name: ESP-IDF Firmware CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'ESP32 Target Chip (esp32s3)'
+        required: false
+        default: 'esp32s3'
+
+jobs:
+  build:
+    name: Build Firmware with Docker Compose
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache ccache compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ${{ runner.os }}-esp-idf-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-esp-idf-ccache-
+
+      - name: Run Build via Docker Compose
+        env:
+          IDF_TARGET: ${{ github.event.inputs.target || 'esp32s3' }}
+        run: |
+          mkdir -p .ccache
+          docker compose -f docker-compose.ci.yml up \
+            --abort-on-container-exit \
+            --exit-code-from idf-builder
+
+      - name: Verify build outputs
+        run: |
+          test -f build/app-firmware.bin || test -f build/*.bin
+          echo "Firmware compilation verified successfully!"
+
+      - name: Upload Firmware Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-idf-firmware-${{ github.event.inputs.target || 'esp32s3' }}-${{ github.sha }}
+          path: |
+            build/*.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/flasher_args.json
+          if-no-files-found: error
+
+      - name: Cleanup Docker Compose
+        if: always()
+        run: docker compose -f docker-compose.ci.yml down -v
