@@ -1,0 +1,26 @@
+# ESP-IDF build output
+build/
+
+# ESP-IDF managed components
+managed_components/
+
+# ESP-IDF dependency lock file
+dependencies.lock
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# Eclipse/Espressif IDE workspace metadata
+.metadata/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# Python cache
+__pycache__/
+*.pyc

@@ -8,10 +8,9 @@
 #include "esp_system.h"
 #include "esp_log.h"
 
+
+
 void app_main(void)
 {
-    printf("========================================\n");
-    printf("  ASTI-ITS ESP-IDF Firmware CI Build    \n");
-    printf("========================================\n");
 
 }
