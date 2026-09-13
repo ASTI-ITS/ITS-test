@@ -12,17 +12,38 @@ ITS-test/
 │   └── workflows/
 │       └── ci.yml               # GitHub Actions CI workflow
 ├── docker-compose.ci.yml        # Docker Compose CI build service
-├── sample-project/              # ESP-IDF firmware project
-│   ├── CMakeLists.txt           # Project CMake definition
-│   ├── sdkconfig                # Target configuration (default: esp32s3)
-│   └── main/                    # Component source directory
-│       ├── CMakeLists.txt       # Component CMake registration
-│       └── sample-project.c     # Application entry point (app_main)
+├── Makefile
+├── esp-idf-projects/            #Project Files
+│   ├── hello_world/
+│   ├── rtos_hq/
+│   ├── rtos_task_test/
+│   └── sample-project/
 ├── .gitignore
 └── README.md
 ```
 
 ---
+## 🚀 Build Instructions
+
+### Makefile Option: Build docker with MakeFile Command
+
+sdkconfig must be set first to specified chip or else flash and monitor wont execute 
+
+(`CONFIG_IDF_TARGET_ESP32=y and CONFIG_IDF_TARGET="esp32"`):
+
+```bash
+# Build, flash, and  monitor rtos_hq project
+make bd_rtos_hq: --abort-on-container-exit --exit-code-from idf-builder
+
+# Or run directly from sample-project/
+make bd_rtos_task_test --abort-on-container-exit --exit-code-from idf-builder
+
+# Specify a different target chip (e.g., esp32, esp32c3)
+make bd_hello_world --abort-on-container-exit --exit-code-from idf-builder
+
+# Specify a different target chip (e.g., esp32, esp32c3)
+make bd_sample-project --abort-on-container-exit --exit-code-from idf-builder
+```
 
 ## 🚀 Build Instructions
 
