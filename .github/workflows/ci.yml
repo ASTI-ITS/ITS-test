@@ -18,6 +18,15 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
 
+
+    strategy:
+      matrix:
+        project:
+          - hello_world
+          - rtos_hq
+          - rtos_task_test
+          - sample-project
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

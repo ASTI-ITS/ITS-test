@@ -12,7 +12,7 @@ services:
         set -euo pipefail
         echo "====================================================="
         echo "  ESP-IDF Docker Compose CI Pipeline                 "
-        echo "  Target Chip: $$IDF_TARGET"S
+        echo "  Target Chip: $$IDF_TARGET"
         echo "====================================================="
 
         # Clean build directory if generated from host environment
