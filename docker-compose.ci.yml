@@ -27,7 +27,6 @@ services:
         fi
 
         # Compile application
-        idf.py fullclean
         idf.py build
 
         # Ensure artifacts are readable by host users
