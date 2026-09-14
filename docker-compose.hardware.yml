@@ -7,6 +7,10 @@ services:
     volumes:
       - ./${PROJECT}:/project
     working_dir: /project
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    stdin_open: true
+    tty: true
     command: >
       bash -c '
         set -euo pipefail
@@ -27,7 +31,12 @@ services:
         fi
 
         # Compile application
+        idf.py fullclean
         idf.py build
+
+        #Flash and Post
+        idf.py -p /dev/ttyUSB0 flash
+        idf.py monitor
 
         # Ensure artifacts are readable by host users
         chmod -R a+rw build/ 2>/dev/null || true
