@@ -10,7 +10,7 @@ This repository demonstrates an automated Continuous Integration (CI) pipeline f
 ITS-test/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml               # GitHub Actions CI workflow
+│       └── ci.yaml              # GitHub Actions CI workflow
 ├── docker-compose.ci.yml        # Docker Compose CI build service
 ├── sample-project/              # ESP-IDF firmware project
 │   ├── CMakeLists.txt           # Project CMake definition
@@ -76,13 +76,12 @@ Compiled binaries are generated in `./sample-project/build/`:
 
 ## 🛠️ GitHub Actions CI
 
-The workflow configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+The workflow configured in [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml):
 1. Runs on an `ubuntu-22.04` runner.
-2. Utilizes `actions/cache` for `.ccache` compiler caching across commits.
-3. Builds the firmware in an isolated container environment using `docker-compose.ci.yml`.
-4. Validates compilation and verifies that all `.bin` firmware artifacts are generated.
-5. Uploads the firmware binaries as downloadable build artifacts (`esp-idf-firmware-esp32s3-<sha>`).
-6. Cleans up containers and volumes automatically upon completion.
+2. Builds the firmware in an isolated container environment using `docker-compose.ci.yml`.
+3. Validates compilation and verifies that all firmware artifacts are generated.
+4. Uploads the firmware binaries as downloadable build artifacts (`esp-idf-firmware-esp32s3-<sha>`).
+5. Cleans up containers and volumes automatically upon completion.
 
 ---
 

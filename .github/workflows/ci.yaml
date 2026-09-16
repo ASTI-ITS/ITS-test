@@ -1,0 +1,61 @@
+name: ESP-IDF Firmware CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+    inputs:
+      target:
+        description: ESP32 target chip
+        required: false
+        default: 'esp32s3'
+        type: string
+
+jobs:
+  build:
+    name: Build Firmware with Docker Compose
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Run Build via Docker Compose
+        env:
+          IDF_TARGET: ${{ github.event.inputs.target || 'esp32s3' }}
+        run: |
+          docker compose -f docker-compose.ci.yml up \
+            --abort-on-container-exit \
+            --exit-code-from idf-builder
+
+      - name: Verify build outputs
+        run: |
+          test -f sample-project/build/sample-project.bin
+          test -f sample-project/build/bootloader/bootloader.bin
+          test -f sample-project/build/partition_table/partition-table.bin
+          test -f sample-project/build/flasher_args.json
+          echo "Firmware compilation verified successfully!"
+
+      - name: Upload Firmware Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-idf-firmware-${{ github.event.inputs.target || 'esp32s3' }}-${{ github.sha }}
+          path: |
+            sample-project/build/*.bin
+            sample-project/build/bootloader/bootloader.bin
+            sample-project/build/partition_table/partition-table.bin
+            sample-project/build/flasher_args.json
+          if-no-files-found: error
+
+      - name: Cleanup Docker Compose
+        if: always()
+        run: docker compose -f docker-compose.ci.yml down -v
