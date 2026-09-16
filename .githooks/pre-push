@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root=$(git rev-parse --show-toplevel)
+cd "$repository_root"
+
+echo "Running ESP-IDF build before push..."
+
+if ! docker compose -f docker-compose.ci.yml up \
+  --abort-on-container-exit \
+  --exit-code-from idf-builder; then
+  echo "Push blocked: ESP-IDF compilation failed."
+  docker compose -f docker-compose.ci.yml down -v >/dev/null 2>&1 || true
+  exit 1
+fi
+
+docker compose -f docker-compose.ci.yml down -v >/dev/null 2>&1 || true
+echo "ESP-IDF build passed. Push may continue."
