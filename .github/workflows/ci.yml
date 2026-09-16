@@ -2,7 +2,7 @@ name: ESP-IDF Firmware CI
 
 on:
   push:
-    branches: [develop]
+    branches: ['**']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -43,7 +43,10 @@ jobs:
 
       - name: Verify build outputs
         run: |
-          test -f sample-project/build/sample-project.bin || test -f sample-project/build/*.bin || test -f build/*.bin
+          test -f sample-project/build/sample-project.bin
+          test -f sample-project/build/bootloader/bootloader.bin
+          test -f sample-project/build/partition_table/partition-table.bin
+          test -f sample-project/build/flasher_args.json
           echo "Firmware compilation verified successfully!"
 
       - name: Upload Firmware Artifacts
