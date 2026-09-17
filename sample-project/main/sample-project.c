@@ -3,10 +3,19 @@
 #include <stdbool.h>
 #include <string.h>
 
-...........................this is the error...........#include "freertos/FreeRTOS.h"
+/*
+ * FreeRTOS is the real-time operating system used by ESP-IDF.
+ * These headers provide task scheduling, timing, and mutex support.
+ */
+#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
+/*
+ * ESP-IDF drivers used by this project:
+ * - SPI driver: communication with the MCP2515 CAN controller
+ * - GPIO driver: LED control and pin configuration
+ */
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 
@@ -158,6 +167,11 @@ typedef struct
 // GLOBALS
 // ============================================================
 
+/*
+ * mcp_spi: handle for the SPI device connected to the MCP2515 chip.
+ * mcp_mutex: protects access to the shared MCP2515 chip because both
+ * tasks may read/write it at the same time.
+ */
 static spi_device_handle_t mcp_spi;
 
 static SemaphoreHandle_t mcp_mutex;
@@ -167,6 +181,9 @@ static const char *TAG = "OBD2";
 
 // ============================================================
 // SPI TRANSFER
+//
+// This function sends a read/write command over SPI and optionally
+// receives data back from the MCP2515 chip.
 // ============================================================
 
 static esp_err_t mcp_spi_transfer(
@@ -191,6 +208,9 @@ static esp_err_t mcp_spi_transfer(
 
 // ============================================================
 // MCP2515 RESET
+//
+// Resets the CAN controller chip so it starts from a known state.
+// This is required before configuring filters, speeds, and modes.
 // ============================================================
 
 static void mcp_reset(void)
@@ -212,6 +232,9 @@ static void mcp_reset(void)
 
 // ============================================================
 // READ ONE REGISTER
+//
+// Reads a single 8-bit register from the MCP2515.
+// This is used to check flags, status, and configuration values.
 // ============================================================
 
 static uint8_t mcp_read_register(uint8_t address)
@@ -238,6 +261,9 @@ static uint8_t mcp_read_register(uint8_t address)
 
 // ============================================================
 // WRITE ONE REGISTER
+//
+// Writes a single value into one MCP2515 register.
+// Example: set CAN bit timing or configure a mode.
 // ============================================================
 
 static void mcp_write_register(
@@ -262,6 +288,9 @@ static void mcp_write_register(
 
 // ============================================================
 // WRITE MULTIPLE REGISTERS
+//
+// Writes several consecutive registers with one SPI transfer.
+// This is useful when programming an MCP2515 CAN ID or configuration array.
 // ============================================================
 
 static void mcp_write_registers(
@@ -299,6 +328,9 @@ static void mcp_write_registers(
 
 // ============================================================
 // READ MULTIPLE REGISTERS
+//
+// Reads a block of consecutive MCP2515 registers in one transfer.
+// This is used to read CAN IDs, data fields, and status registers.
 // ============================================================
 
 static void mcp_read_registers(
@@ -335,6 +367,9 @@ static void mcp_read_registers(
 
 // ============================================================
 // BIT MODIFY
+//
+// Changes only selected bits in a register without affecting the rest.
+// Example: set operating mode or clear interrupt flags.
 // ============================================================
 
 static void mcp_bit_modify(
@@ -361,6 +396,9 @@ static void mcp_bit_modify(
 
 // ============================================================
 // SET MCP2515 MODE
+//
+// Puts the MCP2515 into a specific operating mode such as:
+// CONFIG, NORMAL, LISTEN, LOOPBACK, or SLEEP.
 // ============================================================
 
 static bool mcp_set_mode(uint8_t mode)
@@ -394,14 +432,9 @@ static bool mcp_set_mode(uint8_t mode)
 // ============================================================
 // SET STANDARD 11-BIT CAN ID
 //
-// Converts:
-//      0x7E8
-//
-// to MCP2515:
-//      SIDH
-//      SIDL
-//      EID8
-//      EID0
+// Converts a normal CAN ID such as 0x7E8 into the format that the
+// MCP2515 expects in its SIDH/SIDL registers.
+// This is used for both receive filters and transmit IDs.
 // ============================================================
 
 static void mcp_set_standard_id(
@@ -428,6 +461,13 @@ static void mcp_set_standard_id(
 
 // ============================================================
 // MCP2515 INITIALIZATION
+//
+// Configures the CAN controller and prepares it for OBD-II communication.
+// This includes:
+//  - reset and mode setup
+//  - CAN bit timing
+//  - receive masks and filters
+//  - normal operating mode
 // ============================================================
 
 static bool mcp2515_init(void)
@@ -457,7 +497,7 @@ static bool mcp2515_init(void)
     );
 
 
-    // --------------------------------------------------------
+    // --------------------------------------------------------s
     // CAN SPEED
     //
     // 1 Mbps
@@ -610,6 +650,9 @@ static bool mcp2515_init(void)
 
 // ============================================================
 // SEND CAN MESSAGE
+//
+// Sends an OBD-II request frame to the CAN bus through the MCP2515.
+// This is used to ask the vehicle for data like RPM.
 // ============================================================
 
 static bool mcp_send_message(
@@ -707,6 +750,9 @@ static bool mcp_send_message(
 
 // ============================================================
 // READ RX BUFFER
+//
+// Reads one CAN frame from the MCP2515 receive buffer and converts it
+// from MCP2515 register format back into a normal CAN frame structure.
 // ============================================================
 
 static bool mcp_read_rx_buffer(
@@ -769,6 +815,9 @@ static bool mcp_read_rx_buffer(
 
 // ============================================================
 // READ CAN MESSAGE
+//
+// Checks the MCP2515 interrupt flags and reads whichever receive buffer
+// has a new CAN message waiting.
 // ============================================================
 
 static bool mcp_read_message(
@@ -841,14 +890,17 @@ static bool mcp_read_message(
 // ============================================================
 // OBD-II REQUEST TASK
 //
-// Arduino equivalent:
+// This task periodically sends an OBD-II RPM request to the vehicle.
+// It builds a CAN frame with PID 0x0C (engine RPM) and sends it every
+// 50 ms using the shared MCP2515 chip.
 //
+// Arduino equivalent:
 // if (millis() - lastRequest >= 50)
 // {
 //     mcp2515.sendMessage(&txFrame);
 // }
 //
-// FreeRTOS handles the timing.
+// FreeRTOS handles the timing here with xTaskDelayUntil().
 // ============================================================
 
 static void obd_request_task(
@@ -941,6 +993,10 @@ static void obd_request_task(
 
 // ============================================================
 // CAN RECEIVE TASK
+//
+// This task continuously checks for incoming CAN messages from the vehicle.
+// When a valid RPM response is received, it decodes the raw bytes and prints
+// the engine RPM value.
 // ============================================================
 
 static void can_receive_task(
@@ -1039,6 +1095,9 @@ static void can_receive_task(
 
 // ============================================================
 // SPI INITIALIZATION
+//
+// Configures the ESP32 SPI bus and adds the MCP2515 as a slave device.
+// This is the communication link used to read and write CAN controller regs.
 // ============================================================
 
 static void spi_init(void)
@@ -1116,6 +1175,9 @@ static void spi_init(void)
 
 // ============================================================
 // APPLICATION ENTRY POINT
+//
+// This is the main function that runs when the ESP32 starts.
+// It initializes GPIO, SPI, the MCP2515, and then starts the FreeRTOS tasks.
 // ============================================================
 
 void app_main(void)
