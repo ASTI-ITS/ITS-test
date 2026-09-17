@@ -39,7 +39,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "freertos/FreeRTOS.h"
+...............this is the error...........#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
