@@ -20,6 +20,10 @@ static uint16_t min_u16(uint16_t a, uint16_t b) {
     return a < b ? a : b;
 }
 
+static bool is_dtc_service(uint8_t service) {
+    return service == 0x03 || service == 0x07 || service == 0x0A;
+}
+
 static void diagnostic_clear(diagnostic_data_t *data) {
     if (data) memset(data, 0, sizeof(*data));
 }
@@ -87,6 +91,11 @@ static void queue_response(obd2_t *obd, const char *text) {
     obd_response_t *response = &pool->slots[slot];
     response->line_feeds = obd->line_feeds;
     snprintf(response->text, sizeof(response->text), "%s", text ? text : "");
+
+    /* Serial logging uses a zero-wait queue; a full queue only drops debug output. */
+    if (obd->debug_log_queue) {
+        (void)xQueueSend(obd->debug_log_queue, response->text, 0);
+    }
 
     /* Queue only one byte. Return the slot if the ready queue is unexpectedly full. */
     if (xQueueSend(pool->ready_slots, &slot, 0) != pdTRUE) {
@@ -291,13 +300,21 @@ static void update_caches(obd2_t *obd, const uint8_t *payload, uint16_t length) 
             service == 0x07 ? &obd->diagnostics.pending_count :
                               &obd->diagnostics.permanent_count;
 
-        *count = 0;
-
         for (uint16_t i = 1;
              i + 1 < length && *count < OBD_MAX_DTCS;
              i += 2) {
             uint16_t code = ((uint16_t)payload[i] << 8) | payload[i + 1];
-            if (code) target[(*count)++] = code;
+            if (!code) continue;
+
+            bool duplicate = false;
+            for (uint8_t existing = 0; existing < *count; ++existing) {
+                if (target[existing] == code) {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            if (!duplicate) target[(*count)++] = code;
         }
     } else if (service == 0x04) {
         diagnostic_clear(&obd->diagnostics);
@@ -398,6 +415,36 @@ static void begin_frame(obd2_t *obd, size_t *out, uint16_t source_id) {
     );
 }
 
+static void publish_formatted_payload(obd2_t *obd) {
+    if (!obd) return;
+
+    if (!obd->request_active || !is_dtc_service(obd->requested_service)) {
+        queue_response(obd, obd->response_buffer);
+        return;
+    }
+
+    size_t used = strnlen(
+        obd->diagnostic_response_buffer,
+        sizeof(obd->diagnostic_response_buffer)
+    );
+    size_t remaining = sizeof(obd->diagnostic_response_buffer) - used;
+    if (used && remaining > 1) {
+        obd->diagnostic_response_buffer[used++] = '\r';
+        obd->diagnostic_response_buffer[used] = '\0';
+        remaining = sizeof(obd->diagnostic_response_buffer) - used;
+    }
+
+    if (remaining > 1) {
+        (void)snprintf(
+            &obd->diagnostic_response_buffer[used],
+            remaining,
+            "%s",
+            obd->response_buffer
+        );
+    }
+    obd->diagnostic_response_received = true;
+}
+
 static void format_payload(
     obd2_t *obd,
     uint16_t source_id,
@@ -410,7 +457,9 @@ static void format_payload(
     size_t out = 0;
     obd->response_buffer[0] = '\0';
 
-    if (prefix && prefix[0]) {
+        if (prefix && prefix[0] &&
+                !(obd->request_active && is_dtc_service(obd->requested_service) &&
+                    obd->diagnostic_response_received)) {
         out += snprintf(
             obd->response_buffer,
             sizeof(obd->response_buffer),
@@ -436,7 +485,7 @@ static void format_payload(
             );
         }
 
-        queue_response(obd, obd->response_buffer);
+        publish_formatted_payload(obd);
         return;
     }
 
@@ -451,7 +500,7 @@ static void format_payload(
             append_byte(obd, &out, 0x00, true);
         }
 
-        queue_response(obd, obd->response_buffer);
+        publish_formatted_payload(obd);
         return;
     }
 
@@ -486,7 +535,7 @@ static void format_payload(
         }
     }
 
-    queue_response(obd, obd->response_buffer);
+    publish_formatted_payload(obd);
 }
 
 static void process_payload(
@@ -510,6 +559,9 @@ static void process_payload(
             length,
             obd->obd_echo_prefix
         );
+        if (obd->request_active && is_dtc_service(obd->requested_service)) {
+            return;
+        }
         obd->request_active = false;
         return;
     }
@@ -533,7 +585,9 @@ static void process_payload(
         length,
         obd->obd_echo_prefix
     );
-    obd->request_active = false;
+    if (!is_dtc_service(obd->requested_service)) {
+        obd->request_active = false;
+    }
 }
 
 static void finish_no_data(obd2_t *obd) {
@@ -788,6 +842,10 @@ bool obd2_init(
     return mcp2515_transport_begin(can, bitrate);
 }
 
+void obd2_set_debug_log_queue(obd2_t *obd, QueueHandle_t queue) {
+    if (obd) obd->debug_log_queue = queue;
+}
+
 bool obd2_command(obd2_t *obd, const char *input) {
     if (!obd || !input) return false;
 
@@ -872,6 +930,12 @@ bool obd2_command(obd2_t *obd, const char *input) {
     obd->requested_service = service;
     obd->requested_has_pid = length > 1;
     obd->requested_pid = obd->requested_has_pid ? payload[1] : 0;
+    obd->diagnostic_response_received = false;
+    obd->diagnostic_response_buffer[0] = '\0';
+
+    if (service == 0x03) obd->diagnostics.stored_count = 0;
+    if (service == 0x07) obd->diagnostics.pending_count = 0;
+    if (service == 0x0A) obd->diagnostics.permanent_count = 0;
 
     snprintf(
         obd->obd_echo_prefix,
@@ -984,7 +1048,13 @@ bool obd2_poll(obd2_t *obd) {
 
     if (obd->request_active &&
         (uint32_t)(now - obd->request_started_ms) >= obd->timeout_ms) {
-        finish_no_data(obd);
+        if (is_dtc_service(obd->requested_service) &&
+            obd->diagnostic_response_received) {
+            obd->request_active = false;
+            queue_response(obd, obd->diagnostic_response_buffer);
+        } else {
+            finish_no_data(obd);
+        }
     }
 
     if (obd->non_obd_request &&

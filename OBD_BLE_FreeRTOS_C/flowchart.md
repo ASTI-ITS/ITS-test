@@ -12,27 +12,30 @@ flowchart TD
     D --> E{Command valid?}
     E -- Yes --> F[obd2_command()]
     E -- No --> G[Return ELM error / unsupported]
-    F --> H[parse_standard_obd_request or parse_non_obd_request]
+    F --> H[Parse AT, standard OBD, or custom command]
     H --> I[Build CAN request frame]
     I --> J[mcp2515_transport_send()]
     J --> K[MCP2515 TX buffer]
     K --> L[Vehicle CAN bus]
-    L --> M[MCP2515 RX interrupt / polling]
+    L --> M[OBD task polls MCP2515]
     M --> N[mcp2515_transport_receive()]
-    N --> O[Decode ISO-TP / frame assembly / PID parsing]
-    O --> P[Store response in response pool]
-    P --> Q[response_ready_queue]
-    Q --> R[BLE TX task on core 0]
-    R --> S[Build ELM327 response string]
-    S --> T[MTU chunked BLE notification]
-    T --> U[Mobile app / OBD tool]
+    N --> O[Reassemble ISO-TP and format OBD response]
+    O --> P[Copy response to static response slot]
+    P --> Q[Zero-wait enqueue to debug log queue]
+    Q --> R[Low-priority serial logger]
+    R --> S[ESP_LOGI tag OBD_OUT]
+    P --> T[Queue response slot index]
+    T --> V[BLE TX task on core 0]
+    V --> W[Add ELM CR/CRLF and prompt]
+    W --> X[MTU chunked BLE notification]
+    X --> U[Mobile app / OBD tool]
 
-    D --> V[obd2_poll()]
-    V --> W{Any pending CAN response?}
-    W -- Yes --> X[Read CAN frame]
-    X --> Y[Assemble ISO-TP message]
-    Y --> O
-    W -- No --> Z[Idle / taskYIELD / 1 ms delay]
+    D --> AA[obd2_poll()]
+    AA --> AB{Any pending CAN response?}
+    AB -- Yes --> AC[Read CAN frame]
+    AC --> AD[Assemble ISO-TP message]
+    AD --> O
+    AB -- No --> AE[Idle / taskYIELD / 1 ms delay]
 ```
 
 ## Detailed startup flow
@@ -41,16 +44,17 @@ flowchart TD
 flowchart TD
     A[app_main()] --> B[init_nvs()]
     B --> C[Create static FreeRTOS queues]
-    C --> D[response pool init]
+    C --> D[Initialize response and debug log pools]
     D --> E[mcp2515_transport_init_bus()]
     E --> F[spi_bus_initialize + spi_bus_add_device]
     F --> G[obd2_init()]
     G --> H[Initialize MCP2515 timing and receive mode]
     H --> I[elm327_ble_init()]
-    I --> J[Create obd_can task pinned to core 1]
-    J --> K[Create ble_tx task pinned to core 0]
-    K --> L[elm327_ble_start_host()]
-    L --> M[System ready]
+    I --> J[Create obd_serial_log task on core 0]
+    J --> K[Create obd_can task pinned to core 1]
+    K --> L[Create ble_tx task pinned to core 0]
+    L --> M[elm327_ble_start_host()]
+    M --> N[System ready]
 ```
 
 ## OBD task loop
@@ -83,19 +87,18 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[Phone app sends AT or PID command] --> B[BLE GATT write callback]
-    B --> C[ELM327 parser]
-    C --> D[Normalize command text]
-    D --> E[Queue item into command_queue]
-    E --> F[OBD task consumes queue]
-    F --> G[Command processed]
-    G --> H[Response saved in response pool]
-    H --> I[ready_queue contains slot index]
-    I --> J[BLE TX task wakes up]
-    J --> K[Fetch response slot]
+    B --> C[Collect command until CR/LF or write boundary]
+    C --> D[Queue item into command_queue]
+    D --> E[OBD task consumes queue]
+    E --> F[OBD2 normalizes and processes command]
+    F --> G[Format response in static response slot]
+    G --> H[Zero-wait copy to debug log queue]
+    H --> I[Serial task prints OBD_OUT]
+    G --> J[ready queue receives slot index]
+    J --> K[BLE TX task fetches response]
     K --> L[Add CR/CRLF and prompt framing]
     L --> M[Split into MTU-safe packets]
-    M --> N[Notify client]
-    N --> O[Return to idle]
+    M --> N[Notify client and recycle slot]
 ```
 
 ## CAN send / receive path
@@ -115,30 +118,27 @@ flowchart TD
     J --> K[Return success/failure]
 
     K --> L[Vehicle responds]
-    L --> M[mcp2515_transport_receive()]
+    L --> M[obd2_poll() polls MCP2515]
     M --> N[Read CANINTF and RXB0/RXB1]
-    N --> O[Decode 11-bit or extended ID + DLC + data]
-    O --> P[Queue frame for OBD protocol processing]
-    P --> Q[obd2_poll() extracts the response]
+    N --> O[Decode CAN ID + DLC + data]
+    O --> P[Process frame in OBD task]
+    P --> Q[Reassemble ISO-TP and format response]
 ```
 
 ## Request parsing flow
 
 ```mermaid
 flowchart TD
-    A[Command string arrives] --> B{String length and format valid?}
-    B -- No --> C[Return "ERROR"]
-    B -- Yes --> D{Starts with 0x01..0x0A or other PID mode?}
-    D -- Yes --> E[Standard OBD-II request]
-    D -- No --> F{Matches custom non-OBD mapping?}
-    F -- Yes --> G[parse_non_obd_request()]
-    G --> H[Set response_id to 0x60D or 0x208]
-    H --> I[Send CAN message]
-    F -- No --> J[Unsupported command]
-
-    E --> K[Mode 01 / 02 / 03 / 04 / 07 / 09 / 0A logic]
-    K --> L[Generate request frames]
-    L --> M[Send over CAN]
+    A[Command string arrives] --> B[Normalize case and whitespace]
+    B --> C{AT command?}
+    C -- Yes --> D[Process locally and queue response]
+    C -- No --> E{Matches custom non-OBD mapping?}
+    E -- Yes --> F[Set expected custom CAN response ID]
+    F --> G[Send custom CAN request]
+    E -- No --> H{Valid supported OBD service and hex payload?}
+    H -- Yes --> I[Build standard OBD request]
+    I --> J[Send over CAN]
+    H -- No --> K[Queue "?"]
 ```
 
 ## Key execution model
@@ -147,6 +147,8 @@ flowchart TD
 - The `obd_can` task owns all CAN and OBD protocol state. It is pinned to core 1.
 - The BLE host stack handles GATT events independently.
 - The `ble_tx` task only sends notifications, and it is pinned to core 0.
+- The low-priority `obd_serial_log` task prints response copies from a static queue.
+- Debug queue writes use zero wait; a full queue drops a log message rather than stalling CAN processing.
 - Commands are moved from BLE into a FreeRTOS queue instead of calling CAN directly from the BLE callback.
 - Responses are stored in a fixed-size pool and queued by slot index to avoid repeated heap allocations.
 
@@ -156,7 +158,7 @@ flowchart TD
 - [main/Transport/MCP2515Transport.c](main/Transport/MCP2515Transport.c) — SPI + MCP2515 send/receive logic
 - [main/Core/OBD2.c](main/Core/OBD2.c) — request parsing, ISO-TP handling, PID logic, cache updates
 - [main/BLE/ELM327_BLE.c](main/BLE/ELM327_BLE.c) — BLE command receive path and TX notification path
-- [main/BLE/ELM327Protocol.c](main/BLE/ELM327Protocol.c) — ELM327 command parsing and command framing behavior
+- The serial logger task is implemented in [main/app_main.c](main/app_main.c).
 
 ## Summary
 
@@ -168,6 +170,6 @@ The firmware is designed as a single-owner OBD system:
 4. The MCP2515 receives the ECU response.
 5. ISO-TP / PID data is decoded and cached.
 6. The response is queued for BLE notification.
-7. The BLE task sends the reply back to the client.
+7. The BLE task sends the reply back to the client; the serial logger independently prints a copy for debugging.
 
 This structure avoids locking around the MCP2515 and keeps timing-sensitive CAN work off the BLE host path.

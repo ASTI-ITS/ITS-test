@@ -13,6 +13,7 @@
 
 #define OBD_RESPONSE_BUFFER_SIZE 1600
 #define OBD_RESPONSE_QUEUE_SIZE 4
+#define OBD_DEBUG_LOG_QUEUE_SIZE 2
 #define OBD_MAX_DTCS 32
 #define OBD_MIN_RESPONSE_TIMEOUT_MS 200
 
@@ -54,14 +55,17 @@ typedef struct {
     diagnostic_data_t diagnostics;
 
     obd_response_pool_t *response_pool;
+    QueueHandle_t debug_log_queue;
 
     char response_buffer[OBD_RESPONSE_BUFFER_SIZE];
+    char diagnostic_response_buffer[OBD_RESPONSE_BUFFER_SIZE];
     char echo_prefix[128];
     char obd_echo_prefix[128];
     char non_obd_echo_prefix[128];
     char last_command[128];
 
     bool request_active;
+    bool diagnostic_response_received;
     bool non_obd_request;
     uint16_t non_obd_response_id;
     uint32_t non_obd_request_started_ms;
@@ -111,6 +115,7 @@ bool obd2_init(
     obd_response_pool_t *response_pool,
     can_bitrate_t bitrate
 );
+void obd2_set_debug_log_queue(obd2_t *obd, QueueHandle_t queue);
 
 bool obd2_command(obd2_t *obd, const char *command);
 

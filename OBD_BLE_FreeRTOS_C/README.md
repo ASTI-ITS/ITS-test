@@ -14,17 +14,13 @@ OBD_BLE_FreeRTOS_C/
     ├── BLE/
     │   ├── BLEServer.h
     │   ├── ELM327_BLE.c
-    │   ├── ELM327_BLE.h
-    │   ├── ELM327Protocol.c
-    │   └── ELM327Protocol.h
+   │   └── ELM327_BLE.h
     ├── Core/
     │   ├── Formula.h
     │   ├── OBD2.c
     │   ├── OBD2.h
     │   ├── PIDTable.c
-    │   ├── PIDTable.h
-    │   ├── Scheduler.c
-    │   └── Scheduler.h
+            │   └── PIDTable.h
     ├── Data/
     │   ├── Mode01Data.c
     │   └── Mode01Data.h
@@ -33,8 +29,7 @@ OBD_BLE_FreeRTOS_C/
     │   └── Decoder.h
     └── Transport/
         ├── MCP2515Transport.c
-        ├── MCP2515Transport.h
-        └── Transport.h
+            └── MCP2515Transport.h
 ```
 
 ## Architecture
@@ -61,8 +56,43 @@ Runtime tasks:
    - Adds CR/CRLF and `>` framing.
    - Sends notifications in MTU-sized chunks.
 
+4. **Serial debug task** (core 0, priority 2)
+   - Prints formatted OBD responses with the `OBD_OUT` log tag.
+   - Receives copies through a bounded static queue; the OBD/CAN task never
+     waits for serial output, and debug messages are dropped if that queue fills.
+
 This single-owner design avoids a mutex around the MCP2515 and avoids blocking
 the timing-critical receive path on BLE.
+
+## How a request works
+
+At startup, `app_main.c` initializes NVS, creates static command/response
+queues and a fixed response pool, starts the MCP2515 SPI transport, initializes
+the OBD protocol and decoder, and registers the BLE GATT service. It then
+starts the OBD/CAN, BLE TX, and serial debug tasks before starting the NimBLE
+host.
+
+The request and response path is:
+
+1. A BLE client writes an ELM-style command to the Nordic UART Service RX
+   characteristic. CR/LF terminates a command; a write boundary also accepts
+   clients that omit a terminator.
+2. The NimBLE callback copies the command into a queue and returns. The
+   OBD/CAN task consumes it. AT commands update adapter settings or return a
+   local response; OBD commands are encoded and sent through the MCP2515.
+3. Standard OBD requests use CAN ID `0x7DF`; responses are accepted from
+   `0x7E8` through `0x7EF`. The OBD task drains received frames, handles
+   ISO-TP single- and multi-frame responses (sending flow control when needed),
+   updates the data/diagnostic caches, and formats the response.
+4. The response is placed in a fixed response-pool slot and copied to the
+   non-blocking debug queue. The BLE TX task
+   consumes that slot, adds CR or CRLF and the ELM `>` prompt, splits the text
+   to fit the negotiated BLE MTU, sends notifications, and returns the slot.
+
+Requests are driven by commands from the BLE client. The firmware does not
+currently discover all supported PIDs and poll them periodically in the
+background. `PIDTable` and `Decoder` describe and decode supported PID data
+when a response is received.
 
 ## Pins
 
@@ -77,21 +107,13 @@ Preserved from the supplied sketch:
 
 ## CAN bitrate and oscillator
 
-The supplied `.ino` calls `obd.begin(CAN_1000KBPS)`, so this conversion defaults
-to:
-
-```c
-#define APP_CAN_BITRATE CAN_BITRATE_1000K
-```
-
-However, the original documentation and ELM protocol text describe ISO 15765-4
-11-bit CAN at 500 kbit/s. For standard OBD-II protocol 6, use:
+The application currently uses 500 kbit/s for standard 11-bit OBD-II CAN:
 
 ```c
 #define APP_CAN_BITRATE CAN_BITRATE_500K
 ```
 
-The MCP2515 oscillator is explicit:
+The MCP2515 oscillator is configured explicitly:
 
 ```c
 #define MCP2515_OSC_HZ 8000000UL
@@ -124,12 +146,16 @@ idf.py -p /dev/ttyUSB0 flash monitor
 - PID cache and decoder
 - VIN / calibration ID cache
 - Stored, pending, and permanent DTC caches
-- Custom raw broadcast commands:
-  - `NN13`, `NV13`, `NN14`, `NV14` -> CAN ID `0x60D`
-  - `MO23`, `MM23`, `MO25`, `MM25` -> CAN ID `0x208`
 
-The supplied Toyota custom-command branch contained no mapped command IDs, so it
-remains unsupported rather than inventing a mapping.
+Custom raw-broadcast commands currently map as follows:
+
+| Commands | CAN ID |
+|---|---:|
+| `NN12`, `NV12` | `0x180` |
+| `NN14`, `NV14` | `0x60D` |
+| `MO23`, `MM23`, `MO25`, `MM25` | `0x208` |
+
+Other custom commands, including the placeholder Toyota branch, are unsupported.
 
 ## Optimization choices
 

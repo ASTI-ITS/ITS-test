@@ -4,11 +4,9 @@ idf_component_register(
         "Transport/MCP2515Transport.c"
         "Core/PIDTable.c"
         "Data/Mode01Data.c"
-        "Core/Scheduler.c"
         "Decoder/Decoder.c"
         "Core/OBD2.c"
         "BLE/ELM327_BLE.c"
-        "BLE/ELM327Protocol.c"
     INCLUDE_DIRS
         "."
         "Core"

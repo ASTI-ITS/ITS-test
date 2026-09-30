@@ -32,8 +32,10 @@
 
 #define OBD_TASK_STACK          8192
 #define BLE_TX_TASK_STACK       4096
+#define OBD_LOG_TASK_STACK      4096
 #define OBD_TASK_PRIORITY       20
 #define BLE_TX_TASK_PRIORITY    8
+#define OBD_LOG_TASK_PRIORITY   2
 
 static const char *TAG = "APP";
 
@@ -59,9 +61,24 @@ static uint8_t s_response_ready_queue_buffer[
     OBD_RESPONSE_QUEUE_SIZE * sizeof(uint8_t)
 ];
 
+static StaticQueue_t s_debug_log_queue_storage;
+static uint8_t s_debug_log_queue_buffer[
+    OBD_DEBUG_LOG_QUEUE_SIZE * OBD_RESPONSE_BUFFER_SIZE
+];
+
 static QueueHandle_t s_command_queue;
 static QueueHandle_t s_response_free_queue;
 static QueueHandle_t s_response_ready_queue;
+static QueueHandle_t s_debug_log_queue;
+
+static void obd_debug_log_task(void *param) {
+    QueueHandle_t queue = (QueueHandle_t)param;
+    char output[OBD_RESPONSE_BUFFER_SIZE];
+
+    while (xQueueReceive(queue, output, portMAX_DELAY) == pdTRUE) {
+        ESP_LOGI("OBD_OUT", "%s", output);
+    }
+}
 
 static void obd_task(void *param) {
     obd2_t *obd = (obd2_t *)param;
@@ -139,6 +156,12 @@ void app_main(void) {
         s_response_ready_queue_buffer,
         &s_response_ready_queue_storage
     );
+    s_debug_log_queue = xQueueCreateStatic(
+        OBD_DEBUG_LOG_QUEUE_SIZE,
+        OBD_RESPONSE_BUFFER_SIZE,
+        s_debug_log_queue_buffer,
+        &s_debug_log_queue_storage
+    );
 
     if (!s_command_queue || !s_response_free_queue || !s_response_ready_queue) {
         ESP_LOGE(TAG, "Failed to create static FreeRTOS queues");
@@ -186,6 +209,26 @@ void app_main(void) {
     }
 
     BaseType_t ok;
+
+    if (s_debug_log_queue) {
+        ok = xTaskCreatePinnedToCore(
+            obd_debug_log_task,
+            "obd_serial_log",
+            OBD_LOG_TASK_STACK,
+            s_debug_log_queue,
+            OBD_LOG_TASK_PRIORITY,
+            NULL,
+            0
+        );
+
+        if (ok == pdPASS) {
+            obd2_set_debug_log_queue(&s_obd, s_debug_log_queue);
+        } else {
+            ESP_LOGW(TAG, "Serial debug logger unavailable");
+        }
+    } else {
+        ESP_LOGW(TAG, "Serial debug queue unavailable");
+    }
 
     ok = xTaskCreatePinnedToCore(
         obd_task,
