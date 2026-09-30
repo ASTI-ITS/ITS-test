@@ -5,7 +5,7 @@ services:
     environment:
       - IDF_TARGET=${IDF_TARGET:-esp32s3}
     volumes:
-      - ./sample-project:/project
+      - ./${PROJECT:-sample-project}:/project
     working_dir: /project
     command: >
       bash -c '

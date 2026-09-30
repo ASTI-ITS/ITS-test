@@ -20,12 +20,10 @@ jobs:
 
     strategy:
       matrix:
-        target: [esp32s3, esp32, esp32c3, esp32c2, esp32s2, esp32s3]
-      
-        project: 
+        project:
           - Nissan_NV350_nonOBDII
           - sample-project
-          - single_file_ble
+          - Single_file_ble
           - OBD_BLE_FREERTOS_C
 
 
@@ -46,8 +44,8 @@ jobs:
 
       - name: Run Build via Docker Compose
         env:
-          project: ${{ matrix.project }}
-          IDF_TARGET: esp32s3
+          PROJECT: ${{ matrix.project }}
+          IDF_TARGET: ${{ github.event.inputs.target || 'esp32s3' }}
         run: |
           mkdir -p .ccache
           docker compose -f docker-compose.ci.yml up \
