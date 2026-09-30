@@ -5,20 +5,20 @@ This file shows the runtime flow of the ESP-IDF / FreeRTOS firmware in [OBD_BLE_
 ## High-level architecture
 
 ```mermaid
-flowchart TD
+graph TD
     A[BLE client sends ELM327 command] --> B[NimBLE GATT RX callback]
     B --> C[Copy command into s_command_queue]
     C --> D[OBD task on core 1]
     D --> E{Command valid?}
-    E -- Yes --> F[obd2_command()]
+    E -- Yes --> F[obd2_command]
     E -- No --> G[Return ELM error / unsupported]
     F --> H[Parse AT, standard OBD, or custom command]
     H --> I[Build CAN request frame]
-    I --> J[mcp2515_transport_send()]
+    I --> J[mcp2515_transport_send]
     J --> K[MCP2515 TX buffer]
     K --> L[Vehicle CAN bus]
     L --> M[OBD task polls MCP2515]
-    M --> N[mcp2515_transport_receive()]
+    M --> N[mcp2515_transport_receive]
     N --> O[Reassemble ISO-TP and format OBD response]
     O --> P[Copy response to static response slot]
     P --> Q[Zero-wait enqueue to debug log queue]
@@ -30,7 +30,7 @@ flowchart TD
     W --> X[MTU chunked BLE notification]
     X --> U[Mobile app / OBD tool]
 
-    D --> AA[obd2_poll()]
+    D --> AA[obd2_poll]
     AA --> AB{Any pending CAN response?}
     AB -- Yes --> AC[Read CAN frame]
     AC --> AD[Assemble ISO-TP message]
@@ -41,27 +41,27 @@ flowchart TD
 ## Detailed startup flow
 
 ```mermaid
-flowchart TD
-    A[app_main()] --> B[init_nvs()]
+graph TD
+    A[app_main] --> B[init_nvs]
     B --> C[Create static FreeRTOS queues]
     C --> D[Initialize response and debug log pools]
-    D --> E[mcp2515_transport_init_bus()]
+    D --> E[mcp2515_transport_init_bus]
     E --> F[spi_bus_initialize + spi_bus_add_device]
-    F --> G[obd2_init()]
+    F --> G[obd2_init]
     G --> H[Initialize MCP2515 timing and receive mode]
-    H --> I[elm327_ble_init()]
+    H --> I[elm327_ble_init]
     I --> J[Create obd_serial_log task on core 0]
     J --> K[Create obd_can task pinned to core 1]
     K --> L[Create ble_tx task pinned to core 0]
-    L --> M[elm327_ble_start_host()]
+    L --> M[elm327_ble_start_host]
     M --> N[System ready]
 ```
 
 ## OBD task loop
 
 ```mermaid
-flowchart TD
-    A[Start obd_task()] --> B[obd2_poll(obd)]
+graph TD
+    A[Start obd_task] --> B[obd2_poll]
     B --> C{Any incoming CAN data?}
     C -- Yes --> D[Read CAN frame]
     D --> E[ISO-TP / response parsing]
@@ -69,23 +69,23 @@ flowchart TD
     F --> G[Queue prepared response]
     C -- No --> H[No new work]
     H --> I{Any BLE command in s_command_queue?}
-    I -- Yes --> J[obd2_command(obd, command.text)]
+    I -- Yes --> J[obd2_command with queued command]
     J --> K[Validate / parse request]
     K --> L[Build standard or non-OBD request]
     L --> M[Send transaction to MCP2515]
-    M --> N[obd2_poll(obd)]
+    M --> N[obd2_poll]
     N --> O[Continue loop]
-    I -- No --> P{obd2_busy(obd)?}
-    P -- Yes --> Q[taskYIELD()]
+    I -- No --> P{obd2_busy?}
+    P -- Yes --> Q[taskYIELD]
     P -- No --> R{did_work?}
-    R -- No --> S[vTaskDelay(1)]
+    R -- No --> S[vTaskDelay 1 tick]
     R -- Yes --> Q
 ```
 
 ## BLE RX / TX path
 
 ```mermaid
-flowchart TD
+graph TD
     A[Phone app sends AT or PID command] --> B[BLE GATT write callback]
     B --> C[Collect command until CR/LF or write boundary]
     C --> D[Queue item into command_queue]
@@ -104,13 +104,13 @@ flowchart TD
 ## CAN send / receive path
 
 ```mermaid
-flowchart TD
-    A[obd2_command()] --> B{Is request standard OBD or custom branch?}
+graph TD
+    A[obd2_command] --> B{Is request standard OBD or custom branch?}
     B -- Standard PID --> C[Build 11-bit CAN request]
-    B -- Custom non-OBD --> D[parse_non_obd_request()]
+    B -- Custom non-OBD --> D[parse_non_obd_request]
     D --> E[Map to response_id like 0x60D or 0x208]
     E --> C
-    C --> F[mcp2515_transport_send()]
+    C --> F[mcp2515_transport_send]
     F --> G[Wait for TXB0 clear]
     G --> H[Write SIDH/SIDL/DLC/data to MCP2515 TX buffer]
     H --> I[Send RTS to transmit]
@@ -118,7 +118,7 @@ flowchart TD
     J --> K[Return success/failure]
 
     K --> L[Vehicle responds]
-    L --> M[obd2_poll() polls MCP2515]
+    L --> M[obd2_poll polls MCP2515]
     M --> N[Read CANINTF and RXB0/RXB1]
     N --> O[Decode CAN ID + DLC + data]
     O --> P[Process frame in OBD task]
