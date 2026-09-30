@@ -9,18 +9,22 @@ graph TD
     A[BLE client sends ELM327 command] --> B[NimBLE GATT RX callback]
     B --> C[Copy command into s_command_queue]
     C --> D[OBD task on core 1]
-    D --> E{Command valid?}
-    E -- Yes --> F[obd2_command]
-    E -- No --> G[Return ELM error / unsupported]
-    F --> H[Parse AT, standard OBD, or custom command]
-    H --> I[Build CAN request frame]
-    I --> J[mcp2515_transport_send]
-    J --> K[MCP2515 TX buffer]
-    K --> L[Vehicle CAN bus]
-    L --> M[OBD task polls MCP2515]
-    M --> N[mcp2515_transport_receive]
-    N --> O[Reassemble ISO-TP and format OBD response]
-    O --> P[Copy response to static response slot]
+    D --> E[obd2_command]
+    E --> F{Command type?}
+    F -- AT --> G[Build local response]
+    F -- Standard OBD --> H[Build and send standard CAN request]
+    F -- Custom non-OBD --> I[Store expected response ID and timeout]
+    I --> J[No custom CAN request is sent]
+    H --> K[OBD task polls MCP2515]
+    J --> K
+    K --> L{Matching frame or timeout?}
+    L -- Standard response --> M[Reassemble ISO-TP and format response]
+    L -- Custom response --> N[Format raw CAN ID, DLC, and data]
+    L -- Timeout --> O[Build NO DATA response]
+    G --> P[Copy response to static response slot]
+    M --> P
+    N --> P
+    O --> P
     P --> Q[Zero-wait enqueue to debug log queue]
     Q --> R[Low-priority serial logger]
     R --> S[ESP_LOGI tag OBD_OUT]
@@ -29,13 +33,6 @@ graph TD
     V --> W[Add ELM CR/CRLF and prompt]
     W --> X[MTU chunked BLE notification]
     X --> U[Mobile app / OBD tool]
-
-    D --> AA[obd2_poll]
-    AA --> AB{Any pending CAN response?}
-    AB -- Yes --> AC[Read CAN frame]
-    AC --> AD[Assemble ISO-TP message]
-    AD --> O
-    AB -- No --> AE[Idle / taskYIELD / 1 ms delay]
 ```
 
 ## Detailed startup flow
@@ -71,10 +68,13 @@ graph TD
     H --> I{Any BLE command in s_command_queue?}
     I -- Yes --> J[obd2_command with queued command]
     J --> K[Validate / parse request]
-    K --> L[Build standard or non-OBD request]
-    L --> M[Send transaction to MCP2515]
+    K --> L{Standard OBD or custom command?}
+    L -- Standard OBD --> M[Build and send standard CAN request]
     M --> N[obd2_poll]
     N --> O[Continue loop]
+    L -- Custom --> AA[Record expected CAN response ID and timeout]
+    AA --> AB[No custom CAN request is transmitted]
+    AB --> O
     I -- No --> P{obd2_busy?}
     P -- Yes --> Q[taskYIELD]
     P -- No --> R{did_work?}
@@ -106,10 +106,10 @@ graph TD
 ```mermaid
 graph TD
     A[obd2_command] --> B{Is request standard OBD or custom branch?}
-    B -- Standard PID --> C[Build 11-bit CAN request]
-    B -- Custom non-OBD --> D[parse_non_obd_request]
-    D --> E[Map to response_id like 0x60D or 0x208]
-    E --> C
+    B -- Standard OBD --> C[Build 11-bit CAN request]
+    B -- Custom non-OBD --> D[Map command to expected response ID]
+    D --> E[Store response ID and start timeout]
+    E --> X[No custom CAN request is transmitted]
     C --> F[mcp2515_transport_send]
     F --> G[Wait for TXB0 clear]
     G --> H[Write SIDH/SIDL/DLC/data to MCP2515 TX buffer]
@@ -128,17 +128,41 @@ graph TD
 ## Request parsing flow
 
 ```mermaid
-flowchart TD
+graph TD
     A[Command string arrives] --> B[Normalize case and whitespace]
     B --> C{AT command?}
     C -- Yes --> D[Process locally and queue response]
     C -- No --> E{Matches custom non-OBD mapping?}
-    E -- Yes --> F[Set expected custom CAN response ID]
-    F --> G[Send custom CAN request]
+    E -- Yes --> F[Enter custom response wait path]
     E -- No --> H{Valid supported OBD service and hex payload?}
     H -- Yes --> I[Build standard OBD request]
     I --> J[Send over CAN]
     H -- No --> K[Queue "?"]
+```
+
+## Custom / non-OBD command process
+
+```mermaid
+graph TD
+    A[Custom command arrives from BLE] --> B[Normalize to uppercase and remove whitespace]
+    B --> C{Four characters and known mapping?}
+    C -- No --> D[Fall through to hex OBD parsing and return question mark if invalid]
+    C -- Yes --> E[Select expected response CAN ID]
+    E --> F{Custom request already pending?}
+    F -- Yes --> G[Queue BUSY response]
+    F -- No --> H[Save echo, response ID, and start timeout]
+    H --> I[No CAN request frame is sent by this code path]
+    I --> J[OBD task polls incoming CAN frames]
+    J --> K{Frame ID matches expected response ID?}
+    K -- Yes --> L[Format raw CAN ID, DLC, and data bytes]
+    L --> M[Queue BLE response and serial debug copy]
+    K -- No --> N{Timeout expired?}
+    N -- No --> J
+    N -- Yes --> O[Queue NO DATA]
+
+    E -. NN12 or NV12 .-> P[Expect CAN ID 0x180]
+    E -. NN14 or NV14 .-> Q[Expect CAN ID 0x60D]
+    E -. MO23, MM23, MO25, or MM25 .-> R[Expect CAN ID 0x208]
 ```
 
 ## Key execution model
@@ -166,10 +190,9 @@ The firmware is designed as a single-owner OBD system:
 
 1. BLE receives a command.
 2. The command is queued.
-3. The OBD task parses it and sends the CAN request.
-4. The MCP2515 receives the ECU response.
-5. ISO-TP / PID data is decoded and cached.
-6. The response is queued for BLE notification.
-7. The BLE task sends the reply back to the client; the serial logger independently prints a copy for debugging.
+3. The OBD task classifies the command. Standard OBD requests are sent on CAN; current custom commands only store an expected response ID and timeout, without sending a CAN frame.
+4. The MCP2515 is polled for incoming frames. Standard replies use ISO-TP; matching custom replies are formatted as raw CAN data.
+5. The response is queued for BLE notification and copied to the serial logger without waiting.
+6. The BLE task sends the reply back to the client.
 
 This structure avoids locking around the MCP2515 and keeps timing-sensitive CAN work off the BLE host path.
