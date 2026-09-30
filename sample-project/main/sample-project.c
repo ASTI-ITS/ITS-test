@@ -500,15 +500,15 @@ static bool mcp2515_init(void)
     // --------------------------------------------------------s
     // CAN SPEED
     //
-    // 1 Mbps
+    // 500KBPS
     // MCP2515 oscillator = 8 MHz
     //
     // Same settings used by:
     // autowp/arduino-mcp2515
     //
     // CNF1 = 0x00
-    // CNF2 = 0x80
-    // CNF3 = 0x80
+    // CNF2 = 0x91
+    // CNF3 = 0x01
     // --------------------------------------------------------
 
     mcp_write_register(

@@ -2,7 +2,7 @@ name: ESP-IDF Firmware CI
 
 on:
   push:
-    branches: ['**']
+    branches: [test_branch_meynard, main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -17,6 +17,16 @@ jobs:
     name: Build Firmware with Docker Compose
     runs-on: ubuntu-22.04
     timeout-minutes: 20
+
+    strategy:
+      matrix:
+        target: [esp32s3, esp32, esp32c3, esp32c2, esp32s2, esp32s3]
+      
+        project: 
+          - sample-project
+          - single_file_ble
+          - OBD_BLE_FREERTOS_C
+
 
     steps:
       - name: Checkout repository
@@ -34,7 +44,8 @@ jobs:
 
       - name: Run Build via Docker Compose
         env:
-          IDF_TARGET: ${{ github.event.inputs.target || 'esp32s3' }}
+          project: ${{ matrix.project }}
+          IDF_TARGET: esp32s3
         run: |
           mkdir -p .ccache
           docker compose -f docker-compose.ci.yml up \
@@ -43,10 +54,10 @@ jobs:
 
       - name: Verify build outputs
         run: |
-          test -f sample-project/build/sample-project.bin
-          test -f sample-project/build/bootloader/bootloader.bin
-          test -f sample-project/build/partition_table/partition-table.bin
-          test -f sample-project/build/flasher_args.json
+          test -f ${{ matrix.project }}/build/${{ matrix.project }}.bin
+          test -f ${{ matrix.project }}/build/bootloader/bootloader.bin
+          test -f ${{ matrix.project }}/build/partition_table/partition-table.bin
+          test -f ${{ matrix.project }}/build/flasher_args.json
           echo "Firmware compilation verified successfully!"
 
       - name: Upload Firmware Artifacts
@@ -55,10 +66,10 @@ jobs:
         with:
           name: esp-idf-firmware-${{ github.event.inputs.target || 'esp32s3' }}-${{ github.sha }}
           path: |
-            sample-project/build/*.bin
-            sample-project/build/bootloader/bootloader.bin
-            sample-project/build/partition_table/partition-table.bin
-            sample-project/build/flasher_args.json
+            ${{ matrix.project }}/build/*.bin
+            ${{ matrix.project }}/build/bootloader/bootloader.bin
+            ${{ matrix.project }}/build/partition_table/partition-table.bin
+            ${{ matrix.project }}/build/flasher_args.json
           if-no-files-found: error
 
       - name: Cleanup Docker Compose

@@ -39,7 +39,7 @@
 #include <string.h>
 #include <ctype.h>
 
-...............this is the error...........#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 
@@ -86,7 +86,7 @@
 
 #define OBD_TIMEOUT_MS          1000
 #define BLE_MTU_DEFAULT         23
-#define BLE_MAX_ATT_PAYLOAD     244
+#define BLE_sX_ATT_PAYLOAD     244
 
 /* ========================= MCP2515 REGISTERS ========================= */
 

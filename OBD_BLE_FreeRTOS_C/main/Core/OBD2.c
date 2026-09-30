@@ -150,22 +150,50 @@ static bool parse_non_obd_request(const char *command, uint16_t *response_id) {
 
     switch (command[0]) {
         case 'N':
-            if ((command[1] == 'N' || command[1] == 'V') &&
-                command[2] == '1' &&
-                (command[3] == '3' || command[3] == '4')) {
-                *response_id = 0x60D;
-                return true;
+            switch (command[1]) {
+                case 'N':
+                case 'V':
+                    switch (command[2]) {
+                        case '1':
+                            switch (command[3]) {
+                                case '2':
+                                    *response_id = 0x180;
+                                    return true;
+                                case '3':
+                                    return false;
+                                case '4':
+                                    *response_id = 0x60D;
+                                    return true;
+                                default:
+                                    return false;
+                            }
+                        default:
+                            return false;
+                    }
+                default:
+                    return false;
             }
-            return false;
 
         case 'M':
-            if ((command[1] == 'O' || command[1] == 'M') &&
-                command[2] == '2' &&
-                (command[3] == '3' || command[3] == '5')) {
-                *response_id = 0x208;
-                return true;
+            switch (command[1]) {
+                case 'O':
+                case 'M':
+                    switch (command[2]) {
+                        case '2':
+                            switch (command[3]) {
+                                case '3':
+                                case '5':
+                                    *response_id = 0x208;
+                                    return true;
+                                default:
+                                    return false;
+                            }
+                        default:
+                            return false;
+                    }
+                default:
+                    return false;
             }
-            return false;
 
         case 'T':
             /* Toyota mappings were placeholders in the supplied source. */
@@ -859,7 +887,7 @@ bool obd2_poll(obd2_t *obd) {
     if (!obd || !obd->can) return false;
 
     bool consumed_any = false;
-    uint16_t id = 0;
+    uint32_t id = 0;
     uint8_t frame[8];
     uint8_t length = 0;
 

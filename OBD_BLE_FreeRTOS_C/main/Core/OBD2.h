@@ -56,9 +56,9 @@ typedef struct {
     obd_response_pool_t *response_pool;
 
     char response_buffer[OBD_RESPONSE_BUFFER_SIZE];
-    char echo_prefix[32];
-    char obd_echo_prefix[32];
-    char non_obd_echo_prefix[32];
+    char echo_prefix[128];
+    char obd_echo_prefix[128];
+    char non_obd_echo_prefix[128];
     char last_command[128];
 
     bool request_active;
