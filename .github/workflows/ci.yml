@@ -23,9 +23,11 @@ jobs:
         target: [esp32s3, esp32, esp32c3, esp32c2, esp32s2, esp32s3]
       
         project: 
+          - Nissan_NV350_nonOBDII
           - sample-project
           - single_file_ble
           - OBD_BLE_FREERTOS_C
+
 
 
     steps:
