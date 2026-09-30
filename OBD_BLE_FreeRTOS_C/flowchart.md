@@ -137,7 +137,7 @@ graph TD
     E -- No --> H{Valid supported OBD service and hex payload?}
     H -- Yes --> I[Build standard OBD request]
     I --> J[Send over CAN]
-    H -- No --> K[Queue "?"]
+    H -- No --> K[Queue question-mark error]
 ```
 
 ## Custom / non-OBD command process
