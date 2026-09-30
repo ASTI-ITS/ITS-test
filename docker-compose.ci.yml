@@ -5,14 +5,14 @@ services:
     environment:
       - IDF_TARGET=${IDF_TARGET:-esp32s3}
     volumes:
-      - ./${PROJECT:-sample-project}:/project
+      - ./${PROJECT:-OBD_BLE_FreeRTOS_C}:/project
     working_dir: /project
     command: >
       bash -c '
         set -euo pipefail
         echo "====================================================="
         echo "  ESP-IDF Docker Compose CI Pipeline                 "
-        echo "  Target Chip: $$IDF_TARGET"
+        echo "  Target Chip: $IDF_TARGET"
         echo "====================================================="
 
         # Clean build directory if generated from host environment
@@ -23,7 +23,7 @@ services:
 
         # Configure target chip if sdkconfig does not exist or target differs
         if [ ! -f sdkconfig ] || ! grep -q "CONFIG_IDF_TARGET.*$$IDF_TARGET" sdkconfig; then
-          idf.py set-target "$$IDF_TARGET"
+          idf.py set-target "$IDF_TARGET"
         fi
 
         # Compile application

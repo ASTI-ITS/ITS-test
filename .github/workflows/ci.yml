@@ -15,16 +15,13 @@ on:
 jobs:
   build:
     name: Build Firmware with Docker Compose
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     strategy:
       matrix:
         project:
-          - Nissan_NV350_nonOBDII
-          - sample-project
-          - Single_file_ble
-          - OBD_BLE_FREERTOS_C
+          - OBD_BLE_FreeRTOS_C
 
 
 
