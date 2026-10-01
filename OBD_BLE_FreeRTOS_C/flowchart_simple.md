@@ -8,17 +8,17 @@ This file shows the same system flow as the main flowchart, but with easier word
 graph TD
     A[Phone app sends a command] --> B[Bluetooth receives it]
     B --> C[Save command in waiting list]
-    C --> D[Main task on second core]
+    C --> D[Main task on second core (core 1)]
     D --> E[Read and understand the command]
     E --> F{What kind of command?}
     F -- AT --> G[Answer it right away]
-    F -- Normal OBD --> H[Build and send a vehicle request]
-    F -- Extra command --> I[Remember what reply to wait for]
+    F -- Normal OBD --> H[Format as CAN request frame and send to vehicle ECU]
+    F -- Extra command --> I[Store expected response ID and timeout]
     I --> J[No extra request is sent]
-    H --> K[Task checks for vehicle replies]
+    H --> K[Check for vehicle ECU replies]
     J --> K
-    K --> L{Was a reply found or did time run out?}
-    L -- Reply found --> M[Put the data together and format it]
+    K --> L{Was a reply found or timed out?}
+    L -- Reply found --> M[Format CAN response]
     L -- Extra reply found --> N[Show raw message details]
     L -- No reply --> O[Return NO DATA]
     G --> P[Save answer in a response slot]
@@ -29,8 +29,8 @@ graph TD
     Q --> R[Small debug print task]
     R --> S[Write log line]
     P --> T[Send response slot number]
-    T --> V[Bluetooth send task on first core]
-    V --> W[Add end markers and prompt]
+    T --> V[Bluetooth send task on first core (core 0)]
+    V --> W[Add end markers (CR/CRLF) and prompt]
     W --> X[Split into small Bluetooth packets]
     X --> U[Phone app / scanner]
 ```
@@ -39,11 +39,11 @@ graph TD
 
 ```mermaid
 graph TD
-    A[Program starts] --> B[Set up saved settings]
-    B --> C[Create the internal message lists]
-    C --> D[Prepare reply and log storage]
+    A[Program starts] --> B[Set up saved settings/config]
+    B --> C[Create static FreeRTOS queues]
+    C --> D[Prepare reply and log storage (pools)]
     D --> E[Start the vehicle connection]
-    E --> F[Set up chip and bus]
+    E --> F[Set up chip and bus (SPI.begin(7,8,9,5))]
     F --> G[Initialize the OBD system]
     G --> H[Set vehicle timing and receive mode]
     H --> I[Start Bluetooth]
