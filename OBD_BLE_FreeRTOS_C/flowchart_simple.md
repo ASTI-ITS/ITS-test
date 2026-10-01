@@ -41,9 +41,9 @@ graph TD
 graph TD
     A[Program starts] --> B[Set up saved settings/config]
     B --> C[Create static FreeRTOS queues]
-    C --> D[Prepare reply and log storage (pools)]
+    C --> D[Prepare reply and log storage _pools_]
     D --> E[Start the vehicle connection]
-    E --> F[Set up chip and bus (SPI.begin(7,8,9,5))]
+    E --> F[Set up chip and bus _SPI.begin(7,8,9,5)_]
     F --> G[Initialize the OBD system]
     G --> H[Set vehicle timing and receive mode]
     H --> I[Start Bluetooth]
