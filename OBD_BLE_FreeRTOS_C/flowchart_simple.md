@@ -30,7 +30,7 @@ graph TD
     R --> S[Write log line]
     P --> T[Send response slot number]
     T --> V[Bluetooth send task on first core _core 0_]
-    V --> W[Add end markers "CR/CRLF" and prompt]
+    V --> W[Add end markers CR/CRLF and prompt]
     W --> X[Split into small Bluetooth packets]
     X --> U[Phone app / scanner]
 ```
