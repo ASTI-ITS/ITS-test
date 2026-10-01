@@ -8,7 +8,7 @@ This file shows the same system flow as the main flowchart, but with easier word
 graph TD
     A[Phone app sends a command] --> B[Bluetooth receives it]
     B --> C[Save command in waiting list]
-    C --> D[Main task on second core (core 1)]
+    C --> D[Main task on second core core 1_]
     D --> E[Read and understand the command]
     E --> F{What kind of command?}
     F -- AT --> G[Answer it right away]
@@ -29,8 +29,8 @@ graph TD
     Q --> R[Small debug print task]
     R --> S[Write log line]
     P --> T[Send response slot number]
-    T --> V[Bluetooth send task on first core (core 0)]
-    V --> W[Add end markers (CR/CRLF) and prompt]
+    T --> V[Bluetooth send task on first core _core 0_]
+    V --> W[Add end markers "CR/CRLF" and prompt]
     W --> X[Split into small Bluetooth packets]
     X --> U[Phone app / scanner]
 ```
@@ -43,7 +43,7 @@ graph TD
     B --> C[Create static FreeRTOS queues]
     C --> D[Prepare reply and log storage _pools_]
     D --> E[Start the vehicle connection]
-    E --> F[Set up chip and bus _SPI.begin(7,8,9,5)_]
+    E --> F[Set up chip and bus _SPI.begin_]
     F --> G[Initialize the OBD system]
     G --> H[Set vehicle timing and receive mode]
     H --> I[Start Bluetooth]
