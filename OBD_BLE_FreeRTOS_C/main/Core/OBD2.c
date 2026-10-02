@@ -165,20 +165,20 @@ static bool parse_non_obd_request(const char *command, uint16_t *response_id) {
                     switch (command[2]) {
                         case '1':
                             switch (command[3]) {
-                                case '1':
+                                case '1'://Headlight
                                     *response_id = 0x60D;
                                     return true;
-                                case '2':
+                                case '2': //SIDE LIGHTS
                                     *response_id = 0x60D;
                                     return true;
-                                case '3':
+                                case '3'://left indicator
                                     *response_id = 0x60D;
-                                    return false;
-                                case '4':
+                                    return true;
+                                case '4'://right indicator
                                     *response_id = 0x60D;
                                     return true;
                                 case '5':
-                                    *response_id = 0x180;
+                                    *response_id = 0x180;//brake on/off
                                     return true;
                                 default:
                                     return false;
