@@ -6,33 +6,36 @@ This file shows the same system flow as the main flowchart, but with easier word
 
 ```mermaid
 graph TD
-    A[Phone app sends a command] --> B[Bluetooth receives it]
-    B --> C[Save command in waiting list]
-    C --> D[Main task on second core core 1_]
-    D --> E[Read and understand the command]
-    E --> F{What kind of command?}
-    F -- AT --> G[Answer it right away]
-    F -- Normal OBD --> H[Format as CAN request frame and send to vehicle ECU]
-    F -- Extra command --> I[Store expected response ID and timeout]
-    I --> J[No extra request is sent]
-    H --> K[Check for vehicle ECU replies]
-    J --> K
-    K --> L{Was a reply found or timed out?}
-    L -- Reply found --> M[Format CAN response]
-    L -- Extra reply found --> N[Show raw message details]
-    L -- No reply --> O[Return NO DATA]
-    G --> P[Save answer in a response slot]
-    M --> P
-    N --> P
-    O --> P
-    P --> Q[Quickly send a copy to the log]
-    Q --> R[Small debug print task]
-    R --> S[Write log line]
-    P --> T[Send response slot number]
-    T --> V[Bluetooth send task on first core _core 0_]
-    V --> W[Add end markers CR/CRLF and prompt]
-    W --> X[Split into small Bluetooth packets]
-    X --> U[Phone app / scanner]
+    A[Phone app starts BLE connection] --> B[Secure pairing and bonding]
+    B --> C[Encrypted BLE link ready]
+    C --> D[Phone app sends a command]
+    D --> E[Bluetooth receives it]
+    E --> F[Save command in waiting list]
+    F --> G[Main task on second core core 1_]
+    G --> H[Read and understand the command]
+    H --> I{What kind of command?}
+    I -- AT --> J[Answer it right away]
+    I -- Normal OBD --> K[Format as CAN request frame and send to vehicle ECU]
+    I -- Extra command --> L[Store expected response ID and timeout]
+    L --> M[No extra request is sent]
+    K --> N[Check for vehicle ECU replies]
+    M --> N
+    N --> O{Was a reply found or timed out?}
+    O -- Reply found --> P[Format CAN response]
+    O -- Extra reply found --> Q[Show raw message details]
+    O -- No reply --> R[Return NO DATA]
+    J --> S[Save answer in a response slot]
+    P --> S
+    Q --> S
+    R --> S
+    S --> T[Quickly send a copy to the log]
+    T --> U[Small debug print task]
+    U --> V[Write log line]
+    S --> W[Send response slot number]
+    W --> X[Bluetooth send task on first core _core 0_]
+    X --> Y[Add end markers CR/CRLF and prompt]
+    Y --> Z[Split into small Bluetooth packets]
+    Z --> AA[Phone app / scanner]
 ```
 
 ## Startup flow
@@ -47,11 +50,12 @@ graph TD
     F --> G[Initialize the OBD system]
     G --> H[Set vehicle timing and receive mode]
     H --> I[Start Bluetooth]
-    I --> J[Start the log task]
-    J --> K[Start the main vehicle task]
-    K --> L[Start the Bluetooth send task]
-    L --> M[Begin Bluetooth host]
-    M --> N[System is ready]
+    I --> J[Activate secure BLE pairing settings]
+    J --> K[Start the log task]
+    K --> L[Start the main vehicle task]
+    L --> M[Start the Bluetooth send task]
+    M --> N[Begin Bluetooth host]
+    N --> O[Pairing-ready and ready to connect]
 ```
 
 ## Main task loop
@@ -168,12 +172,13 @@ graph TD
 ## Simple execution model
 
 - The program starts by setting up saved settings.
+- The BLE stack is configured for secure pairing and bonding.
 - The main task checks for new messages from the vehicle.
-- Bluetooth receives commands and puts them in a queue.
+- Bluetooth receives commands only after an encrypted, paired connection is established.
 - The main task reads the command and decides what to do.
 - Normal vehicle requests are sent to the car.
 - Extra commands mostly remember what reply to look for and wait.
-- When a reply arrives, it is cleaned up and sent back to the phone.
+- When a reply arrives, it is cleaned up and sent back to the phone over the secure link.
 - A small background task writes logs without slowing the vehicle work.
 
 ## Main files
@@ -187,11 +192,11 @@ graph TD
 
 The system works in a simple order:
 
-1. The phone sends a command.
+1. The phone connects and completes secure pairing.
 2. The command is placed in a waiting list.
 3. The main task decides if it is a normal request or a special request.
 4. The vehicle side checks for replies.
-5. The response is prepared and returned to the app.
+5. The response is prepared and returned to the app over the encrypted BLE link.
 6. A small log task copies the result without slowing the main work.
 
 This keeps the system smooth and avoids stopping the vehicle work while Bluetooth is active.

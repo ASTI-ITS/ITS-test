@@ -6,33 +6,35 @@ This file shows the runtime flow of the ESP-IDF / FreeRTOS firmware in [OBD_BLE_
 
 ```mermaid
 graph TD
-    A[BLE client sends ELM327 command] --> B[NimBLE GATT RX callback]
-    B --> C[Copy command into s_command_queue]
-    C --> D[OBD task on core 1]
-    D --> E[obd2_command]
-    E --> F{Command type?}
-    F -- AT --> G[Build local response]
-    F -- Standard OBD --> H[Build and send standard CAN request]
-    F -- Custom non-OBD --> I[Store expected response ID and timeout]
-    I --> J[No custom CAN request is sent]
-    H --> K[OBD task polls MCP2515]
-    J --> K
-    K --> L{Matching frame or timeout?}
-    L -- Standard response --> M[Reassemble ISO-TP and format response]
-    L -- Custom response --> N[Format raw CAN ID, DLC, and data]
-    L -- Timeout --> O[Build NO DATA response]
-    G --> P[Copy response to static response slot]
-    M --> P
-    N --> P
-    O --> P
-    P --> Q[Zero-wait enqueue to debug log queue]
-    Q --> R[Low-priority serial logger]
-    R --> S[ESP_LOGI tag OBD_OUT]
-    P --> T[Queue response slot index]
-    T --> V[BLE TX task on core 0]
-    V --> W[Add ELM CR/CRLF and prompt]
-    W --> X[MTU chunked BLE notification]
-    X --> U[Mobile app / OBD tool]
+    A[BLE client connects and pairs] --> B[Secure BLE bonding and encryption]
+    B --> C[BLE client sends ELM327 command]
+    C --> D[NimBLE GATT RX callback]
+    D --> E[Copy command into s_command_queue]
+    E --> F[OBD task on core 1]
+    F --> G[obd2_command]
+    G --> H{Command type?}
+    H -- AT --> I[Build local response]
+    H -- Standard OBD --> J[Build and send standard CAN request]
+    H -- Custom non-OBD --> K[Store expected response ID and timeout]
+    K --> L[No custom CAN request is sent]
+    J --> M[OBD task polls MCP2515]
+    L --> M
+    M --> N{Matching frame or timeout?}
+    N -- Standard response --> O[Reassemble ISO-TP and format response]
+    N -- Custom response --> P[Format raw CAN ID, DLC, and data]
+    N -- Timeout --> Q[Build NO DATA response]
+    I --> R[Copy response to static response slot]
+    O --> R
+    P --> R
+    Q --> R
+    R --> S[Zero-wait enqueue to debug log queue]
+    S --> T[Low-priority serial logger]
+    T --> U[ESP_LOGI tag OBD_OUT]
+    R --> V[Queue response slot index]
+    V --> W[BLE TX task on core 0]
+    W --> X[Add ELM CR/CRLF and prompt]
+    X --> Y[MTU chunked BLE notification]
+    Y --> Z[Mobile app / OBD tool over encrypted link]
 ```
 
 ## Detailed startup flow

@@ -85,6 +85,7 @@ static void obd_task(void *param) {
     elm_command_t command;
 
     while (1) {
+        /* Poll CAN and request timeouts every pass, even when no BLE command arrived. */
         bool did_work = obd2_poll(obd);
 
         /*
@@ -136,6 +137,7 @@ static void init_nvs(void) {
 void app_main(void) {
     init_nvs();
 
+    /* Static queues connect BLE RX, BLE TX response slots, and serial debug output. */
     s_command_queue = xQueueCreateStatic(
         ELM_BLE_COMMAND_QUEUE_SIZE,
         sizeof(elm_command_t),

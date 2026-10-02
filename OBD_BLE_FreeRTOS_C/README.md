@@ -47,7 +47,8 @@ Runtime tasks:
    - Never performs BLE notification or serial printing.
 
 2. **NimBLE host task** (ESP-IDF/NimBLE)
-   - Handles GAP/GATT.
+   - Handles GAP/GATT and secure BLE pairing.
+   - Starts bonding and authenticated pairing on connect.
    - RX callback copies complete ELM commands into a FreeRTOS queue.
    - Never calls the CAN driver directly.
 
@@ -74,17 +75,20 @@ host.
 
 The request and response path is:
 
-1. A BLE client writes an ELM-style command to the Nordic UART Service RX
-   characteristic. CR/LF terminates a command; a write boundary also accepts
-   clients that omit a terminator.
-2. The NimBLE callback copies the command into a queue and returns. The
+1. A BLE client connects to the adapter and completes a secure pairing and
+   bonding exchange. The BLE stack is configured for MITM-protected pairing
+   with encrypted communication and stored bonding keys.
+2. After pairing, the client writes an ELM-style command to the Nordic UART
+   Service RX characteristic. CR/LF terminates a command; a write boundary
+   also accepts clients that omit a terminator.
+3. The NimBLE callback copies the command into a queue and returns. The
    OBD/CAN task consumes it. AT commands update adapter settings or return a
    local response; OBD commands are encoded and sent through the MCP2515.
-3. Standard OBD requests use CAN ID `0x7DF`; responses are accepted from
+4. Standard OBD requests use CAN ID `0x7DF`; responses are accepted from
    `0x7E8` through `0x7EF`. The OBD task drains received frames, handles
    ISO-TP single- and multi-frame responses (sending flow control when needed),
    updates the data/diagnostic caches, and formats the response.
-4. The response is placed in a fixed response-pool slot and copied to the
+5. The response is placed in a fixed response-pool slot and copied to the
    non-blocking debug queue. The BLE TX task
    consumes that slot, adds CR or CRLF and the ELM `>` prompt, splits the text
    to fit the negotiated BLE MTU, sends notifications, and returns the slot.
@@ -137,6 +141,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 - Nordic UART Service BLE UUIDs
 - BLE device name `OBDII`
+- Secure pairing with MITM protection, bonding, and encrypted transport
 - MTU-aware TX chunking up to 244 bytes
 - ELM-style echo, CR/CRLF, and `>` prompt
 - `010C`, `010D`, `0902`, Mode 02/03/04/07/09/0A

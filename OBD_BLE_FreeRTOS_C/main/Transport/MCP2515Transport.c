@@ -264,6 +264,7 @@ bool mcp2515_transport_send(
 ) {
     if (!transport || !data || length > 8 || id > 0x7FF) return false;
 
+    /* Use TXB0 and wait only for bounded hardware completion before returning. */
     const int64_t free_deadline = esp_timer_get_time() + 3000;
     uint8_t ctrl = 0;
     do {
@@ -343,6 +344,7 @@ bool mcp2515_transport_receive(
 ) {
     if (!transport || !id || !data || !length) return false;
 
+    /* Read one pending RX buffer; obd2_poll calls again until both are drained. */
     uint8_t intf = 0;
     if (!read_reg(transport, MCP_CANINTF, &intf)) return false;
 

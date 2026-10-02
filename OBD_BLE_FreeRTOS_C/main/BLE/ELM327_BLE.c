@@ -63,6 +63,7 @@ static void queue_command(bool allow_empty) {
     s_ble->incoming_length = 0;
 }
 
+/* Assemble BLE writes into commands and queue them for the OBD task. */
 static int gatt_access(
     uint16_t conn_handle,
     uint16_t attr_handle,
@@ -184,6 +185,13 @@ static int gap_event(
                     event->connect.conn_handle,
                     &params
                 );
+
+                /*
+                 * Keep the connection simple for Raspberry Pi / BlueZ clients.
+                 * Require encryption and bonding, but avoid a strict MITM/
+                 * Secure Connections flow that many Linux central devices do
+                 * not negotiate successfully.
+                 */
             } else {
                 advertise();
             }
@@ -275,6 +283,22 @@ static void on_reset(int reason) {
     ESP_LOGW(TAG, "NimBLE reset, reason=%d", reason);
 }
 
+static void configure_ble_security(void) {
+    ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+    ble_hs_cfg.sm_oob_data_flag = 0;
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_sc = 0;
+    ble_hs_cfg.sm_sc_only = 0;
+    ble_hs_cfg.sm_sec_lvl = 2;
+    ble_hs_cfg.sm_our_key_dist =
+        BLE_SM_PAIR_KEY_DIST_ENC |
+        BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist =
+        BLE_SM_PAIR_KEY_DIST_ENC |
+        BLE_SM_PAIR_KEY_DIST_ID;
+}
+
 bool elm327_ble_init(
     elm327_ble_t *ble,
     QueueHandle_t command_queue,
@@ -295,6 +319,7 @@ bool elm327_ble_init(
 
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
+    configure_ble_security();
 
     ble_svc_gap_init();
     ble_svc_gatt_init();
@@ -405,6 +430,7 @@ void elm327_ble_tx_task(void *param) {
         return;
     }
 
+    /* A ready-queue item is a response-slot index; recycle each slot after sending. */
     while (1) {
         if (xQueueReceive(pool->ready_slots, &slot, portMAX_DELAY) != pdTRUE) {
             continue;

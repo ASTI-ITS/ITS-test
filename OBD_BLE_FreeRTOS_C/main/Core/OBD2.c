@@ -165,13 +165,20 @@ static bool parse_non_obd_request(const char *command, uint16_t *response_id) {
                     switch (command[2]) {
                         case '1':
                             switch (command[3]) {
+                                case '1':
+                                    *response_id = 0x60D;
+                                    return true;
                                 case '2':
-                                    *response_id = 0x180;
+                                    *response_id = 0x60D;
                                     return true;
                                 case '3':
+                                    *response_id = 0x60D;
                                     return false;
                                 case '4':
                                     *response_id = 0x60D;
+                                    return true;
+                                case '5':
+                                    *response_id = 0x180;
                                     return true;
                                 default:
                                     return false;
@@ -882,6 +889,7 @@ bool obd2_command(obd2_t *obd, const char *input) {
     uint16_t non_obd_id = 0;
     bool is_non_obd = parse_non_obd_request(cmd, &non_obd_id);
 
+    /* AT commands are local; custom commands only wait for their mapped response ID. */
     if (!strncmp(cmd, "AT", 2)) {
         return process_at(obd, cmd);
     }
@@ -950,6 +958,7 @@ bool obd2_command(obd2_t *obd, const char *input) {
 bool obd2_poll(obd2_t *obd) {
     if (!obd || !obd->can) return false;
 
+    /* Drain pending CAN frames, assemble standard replies, and advance request timeouts. */
     bool consumed_any = false;
     uint32_t id = 0;
     uint8_t frame[8];
