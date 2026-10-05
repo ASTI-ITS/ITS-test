@@ -5,8 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_system.h"
+#include "nvs.h"
 #include "PIDTable.h"
 #include "esp_timer.h"
+#include "freertos/task.h"
 
 #define OBD_FUNCTIONAL_REQUEST 0x7DF
 #define OBD_RESPONSE_MIN       0x7E8
@@ -629,6 +632,39 @@ static bool parse_u32_hex(const char *text, uint32_t *value) {
     return true;
 }
 
+static bool toggle_transport_mode(obd2_t *obd) {
+    nvs_handle_t handle;
+    if (nvs_open("obd_cfg", NVS_READWRITE, &handle) != ESP_OK) {
+        set_response(obd, "MODE ERROR");
+        return false;
+    }
+
+    uint8_t current_mode = 0;
+    esp_err_t err = nvs_get_u8(handle, "transport", &current_mode);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        current_mode = 0;
+    } else if (err != ESP_OK || current_mode > 1) {
+        nvs_close(handle);
+        set_response(obd, "MODE ERROR");
+        return false;
+    }
+
+    uint8_t next_mode = current_mode == 0 ? 1 : 0;
+    err = nvs_set_u8(handle, "transport", next_mode);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+
+    if (err != ESP_OK) {
+        set_response(obd, "MODE ERROR");
+        return false;
+    }
+
+    set_response(obd, next_mode == 1 ? "Switching to WiFi" : "Switching to BLE");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+    return true;
+}
+
 static bool process_at(obd2_t *obd, const char *cmd) {
     if (!obd || !cmd) return false;
 
@@ -821,6 +857,10 @@ static bool process_at(obd2_t *obd, const char *cmd) {
         obd->flow_control_mode = (uint8_t)(cmd[6] - '0');
         set_response(obd, "OK");
         return true;
+    }
+
+    if (!strcmp(cmd, "ATCM")) {
+        return toggle_transport_mode(obd);
     }
 
     set_response(obd, "?");
