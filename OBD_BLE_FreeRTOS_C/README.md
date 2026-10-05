@@ -98,6 +98,15 @@ currently discover all supported PIDs and poll them periodically in the
 background. `PIDTable` and `Decoder` describe and decode supported PID data
 when a response is received.
 
+## Wi-Fi connection
+
+The application currently starts in Wi-Fi mode. Join the `OBDII_WIFI` access
+point with password `12345678`, then open a TCP connection to
+`192.168.4.1:35000`. Send ELM-style commands terminated with carriage return
+or line feed, for example `ATI\r`. Responses use CR or CRLF according to the
+ELM `ATL` setting and end with the `>` prompt. The server handles one client
+connection at a time.
+
 ## Pins
 
 Preserved from the supplied sketch:

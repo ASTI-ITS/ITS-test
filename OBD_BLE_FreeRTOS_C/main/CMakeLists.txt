@@ -7,11 +7,13 @@ idf_component_register(
         "Decoder/Decoder.c"
         "Core/OBD2.c"
         "BLE/ELM327_BLE.c"
+        "WiFi/WiFiTransport.c"
     INCLUDE_DIRS
         "."
         "Core"
         "BLE"
         "Transport"
+        "WiFi"
         "Decoder"
         "Data"
     REQUIRES
@@ -19,4 +21,7 @@ idf_component_register(
         nvs_flash
         esp_driver_spi
         esp_timer
+        esp_wifi
+        esp_event
+        esp_netif
 )

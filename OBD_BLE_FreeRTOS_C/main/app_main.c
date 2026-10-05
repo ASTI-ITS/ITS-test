@@ -13,6 +13,7 @@
 #include "Core/OBD2.h"
 #include "BLE/ELM327_BLE.h"
 #include "Transport/MCP2515Transport.h"
+#include "WiFi/WiFiTransport.h"
 
 /*
  * Pin assignment preserved from the supplied XIAO ESP32-S3 sketch.
@@ -37,7 +38,13 @@
 #define BLE_TX_TASK_PRIORITY    8
 #define OBD_LOG_TASK_PRIORITY   2
 
+#define OBD_TRANSPORT_BLE       0
+#define OBD_TRANSPORT_WIFI      1
+
 static const char *TAG = "APP";
+
+/* Set this to 0 for BLE mode or 1 for Wi‑Fi mode. */
+static bool s_transport_mode = OBD_TRANSPORT_BLE;
 
 static mcp2515_transport_t s_can;
 static obd2_t s_obd;
@@ -201,16 +208,28 @@ void app_main(void) {
         return;
     }
 
-    if (!elm327_ble_init(
-            &s_ble,
-            s_command_queue,
-            &s_response_pool,
-            "OBDII")) {
-        ESP_LOGE(TAG, "NimBLE initialization failed");
-        return;
-    }
-
     BaseType_t ok;
+
+    if (s_transport_mode == OBD_TRANSPORT_WIFI) {
+        if (!wifi_transport_init_ap()) {
+            ESP_LOGE(TAG, "Wi‑Fi AP initialization failed");
+            return;
+        }
+
+        if (!wifi_transport_start_server(s_command_queue, &s_response_pool)) {
+            ESP_LOGE(TAG, "Wi‑Fi socket server startup failed");
+            return;
+        }
+    } else {
+        if (!elm327_ble_init(
+                &s_ble,
+                s_command_queue,
+                &s_response_pool,
+                "OBDII")) {
+            ESP_LOGE(TAG, "NimBLE initialization failed");
+            return;
+        }
+    }
 
     if (s_debug_log_queue) {
         ok = xTaskCreatePinnedToCore(
@@ -247,31 +266,40 @@ void app_main(void) {
         return;
     }
 
-    ok = xTaskCreatePinnedToCore(
-        elm327_ble_tx_task,
-        "ble_tx",
-        BLE_TX_TASK_STACK,
-        &s_ble,
-        BLE_TX_TASK_PRIORITY,
-        NULL,
-        0
-    );
+    if (s_transport_mode == OBD_TRANSPORT_BLE) {
+        ok = xTaskCreatePinnedToCore(
+            elm327_ble_tx_task,
+            "ble_tx",
+            BLE_TX_TASK_STACK,
+            &s_ble,
+            BLE_TX_TASK_PRIORITY,
+            NULL,
+            0
+        );
 
-    if (ok != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create BLE TX task");
-        return;
+        if (ok != pdPASS) {
+            ESP_LOGE(TAG, "Failed to create BLE TX task");
+            return;
+        }
+
+        /*
+         * NimBLE host runs independently. It receives GATT writes and only copies
+         * commands into a FreeRTOS queue; it never calls OBD/CAN directly.
+         */
+        elm327_ble_start_host();
+
+        ESP_LOGI(
+            TAG,
+            "Started OBD BLE scanner, CAN=%d bit/s, MCP2515 osc=%lu Hz",
+            (int)APP_CAN_BITRATE,
+            (unsigned long)MCP2515_OSC_HZ
+        );
+    } else {
+        ESP_LOGI(
+            TAG,
+            "Started OBD Wi‑Fi mode, CAN=%d bit/s, MCP2515 osc=%lu Hz",
+            (int)APP_CAN_BITRATE,
+            (unsigned long)MCP2515_OSC_HZ
+        );
     }
-
-    /*
-     * NimBLE host runs independently. It receives GATT writes and only copies
-     * commands into a FreeRTOS queue; it never calls OBD/CAN directly.
-     */
-    elm327_ble_start_host();
-
-    ESP_LOGI(
-        TAG,
-        "Started OBD BLE scanner, CAN=%d bit/s, MCP2515 osc=%lu Hz",
-        (int)APP_CAN_BITRATE,
-        (unsigned long)MCP2515_OSC_HZ
-    );
 }
