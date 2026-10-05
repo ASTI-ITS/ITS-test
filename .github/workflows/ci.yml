@@ -21,6 +21,9 @@ jobs:
     strategy:
       matrix:
         project:
+          - Nissan_NV350_nonOBDII
+          - sample-project
+          - Single_file_ble
           - OBD_BLE_FreeRTOS_C
 
 
